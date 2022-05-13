@@ -11,6 +11,7 @@ beautifulsoup4 = "^4.9.3"
 python-telegram-bot = "^13.7"
 
 [tool.poetry.dev-dependencies]
+black = {version = "^22.3.0", allow-prereleases = true}
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
