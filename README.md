@@ -1,3 +1,9 @@
 ## BurgerBot
 
-I was frustrated with the lack of available slots in Burgeramt, so I've created this bot for myself, to catch one that available. It's pretty straightforward, once per 30 seconds it parses page with all appointments in all Berlin Burgeramts and if there is available slot for current and next month - it notifies in telegram with the link to registration.
+Slightly extended version of https://github.com/sonac/burgerbot, polls for burgeramt appointments in berlin and sends a telegram message when they appear.
+
+First run `make init` and update `.env` with your telegram api key, then
+
+... to run in a docker container run `make run-docker`
+
+... to run locally run `make run-dev` (requires [poetry](https://python-poetry.org/))

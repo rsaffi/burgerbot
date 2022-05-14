@@ -129,6 +129,7 @@ class Bot:
 /remove\_service \<service\_id\> \- remove service from your list
 /services \- list of available services
 /my\_services \- list of services being polled for
+/last\_status \- displays the status of the last poll
 """,
                 parse_mode=ParseMode.MARKDOWN_V2,
             )
