@@ -29,9 +29,18 @@ class Parser:
         self.parse()
 
     def __get_url(self, url) -> requests.Response:
-        if self.proxy_on:
-            return requests.get(url, proxies={"https": "socks5://127.0.0.1:9050"})
-        return requests.get(url)
+        try:
+            if self.proxy_on:
+                return requests.get(
+                    url, proxies={"https": "socks5://127.0.0.1:9050"}, timeout=10
+                )
+            return requests.get(url, timeout=10)
+        except requests.exceptions.ConnectionError:
+            logging.warn("connection error")
+            return None
+        except requests.exceptions.ReadTimeout:
+            logging.warn("request timeout")
+            return None
 
     def __toggle_proxy(self) -> None:
         self.proxy_on = not self.proxy_on
@@ -58,10 +67,18 @@ class Parser:
     def add_service(self, service_id: int) -> None:
         self.services.append(service_id)
 
+    def remove_service(self, service_id: int) -> None:
+        try:
+            self.services.remove(service_id)
+        except ValueError:
+            logging.info(f"{service_id} not in parser")
+
     def parse(self) -> List[str]:
         slots = []
         logging.info("services are: " + str(self.services))
         for svc in self.services:
             page = self.__get_url(build_url(svc))
+            if page == None:
+                continue
             slots += self.__parse_page(page, svc)
         return slots

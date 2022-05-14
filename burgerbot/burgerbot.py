@@ -4,7 +4,6 @@ import json
 import threading
 import logging
 import sys
-import queue
 from dataclasses import dataclass, asdict
 from typing import List
 from datetime import datetime
@@ -27,9 +26,10 @@ service_map = {
     120701: "Personalausweis beantragen",
     121151: "Reisepass beantragen",
     121921: "Gewerbeanmeldung",
-    327537: "Fahrerlaubnis - Umschreibung einer ausländischen",
+    327537: "Fahrerlaubnis \- Umschreibung einer ausländischen",
     324280: "Niederlassungserlaubnis oder Erlaubnis",
-    318998: "Einbürgerung - Verleihung der deutschen Staatsangehörigkeit beantragen",
+    318998: "Einbürgerung \- Verleihung der deutschen Staatsangehörigkeit beantragen",
+    121591: "Führerschein \- Internationalen Führerschein beantragen",
 }
 
 
@@ -67,6 +67,7 @@ class Bot:
         self.dispatcher.add_handler(CommandHandler("start", self.__start))
         self.dispatcher.add_handler(CommandHandler("stop", self.__stop))
         self.dispatcher.add_handler(CommandHandler("add_service", self.__add_service))
+        self.dispatcher.add_handler(CommandHandler("my_services", self.__my_services))
         self.dispatcher.add_handler(
             CommandHandler("remove_service", self.__remove_service)
         )
@@ -89,7 +90,6 @@ class Bot:
         with open(CHATS_FILE, "r") as f:
             users = [User(u["chat_id"], u["services"]) for u in json.load(f)]
             f.close()
-            print(users)
             return users
 
     def __persist_chats(self) -> None:
@@ -123,6 +123,7 @@ class Bot:
 /add_service <service_id> - add service to your list
 /remove_service <service_id> - remove service from your list
 /services - list of available services
+/my_services - list of services being polled for
 """
             )
         except Exception as e:
@@ -146,9 +147,10 @@ class Bot:
             for u in self.users:
                 if u.chat_id == update.message.chat_id:
                     u.services.append(int(service_id))
+                    self.parser.add_service(int(service_id))
                     self.__persist_chats()
                     break
-            update.message.reply_text("Service added")
+            update.message.reply_text(f"{service_map[int(service_id)]} added")
         except Exception as e:
             update.message.reply_text(
                 "Failed to add service, have you specified the service id?"
@@ -160,10 +162,29 @@ class Bot:
         service_id = int(update.message.text.split(" ")[1])
         for u in self.users:
             if u.chat_id == update.message.chat_id:
-                u.services.remove(int(service_id))
+                try:
+                    u.services.remove(int(service_id))
+                except ValueError:
+                    logging.info(f"{service_id} not in list")
                 self.__persist_chats()
                 break
-        update.message.reply_text("Service removed")
+        if not self.__check_service_is_needed(service_id):
+            self.parser.remove_service(int(service_id))
+        update.message.reply_text(f"{service_map[int(service_id)]} removed")
+
+    def __check_service_is_needed(self, service_id: int) -> bool:
+        for u in self.users:
+            for s in u.services:
+                if s == service_id:
+                    return True
+
+    def __my_services(self, update: Update, _: CallbackContext) -> None:
+        services: List[str] = []
+        for u in self.users:
+            if u.chat_id == update.message.chat_id:
+                for s in u.services:
+                    services.append(f"{service_map[s]} - {s}")
+        update.message.reply_text(f'currently polling for: {", ".join(services)}')
 
     def __poll(self) -> None:
         self.updater.start_polling()
@@ -183,7 +204,7 @@ class Bot:
         md_msg = f"There are slots on {self.__date_from_msg(slot.msg)} available for booking for {service_map[slot.service_id]}, click [here]({build_url(slot.service_id)}) to check it out"
         users = [u for u in self.users if slot.service_id in u.services]
         for u in users:
-            logging.debug(f"sending msg to {str(u.chat_id)}")
+            logging.info(f"sending msg to {str(u.chat_id)}")
             try:
                 self.updater.bot.send_message(
                     chat_id=u.chat_id, text=md_msg, parse_mode=ParseMode.MARKDOWN_V2
@@ -213,7 +234,6 @@ class Bot:
 
     def __date_from_msg(self, msg: str) -> str:
         msg_arr = msg.split("/")
-        logging.info(msg)
         ts = (
             int(msg_arr[len(msg_arr) - 2]) + 7200
         )  # adding two hours to match Berlin TZ with UTC
