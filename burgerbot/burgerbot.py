@@ -44,9 +44,9 @@ class User:
     chat_id: int
     services: List[int]
 
-    def __init__(self, chat_id, services=[120686]):
+    def __init__(self, chat_id, services=[]):
         self.chat_id = chat_id
-        self.services = services if len(services) > 0 else [120686]
+        self.services = services
 
     def marshall_user(self) -> str:
         self.services = list(
@@ -99,32 +99,37 @@ class Bot:
 
     def __add_chat(self, chat_id: int) -> None:
         if chat_id not in [u.chat_id for u in self.users]:
-            logging.info("adding new user")
             self.users.append(User(chat_id))
             self.__persist_chats()
 
     def __remove_chat(self, chat_id: int) -> None:
         logging.info("removing the chat " + str(chat_id))
         self.users = [u for u in self.users if u.chat_id != chat_id]
+        for s in self.services:
+            if not self.__check_service_is_needed(s):
+                self.parser.remove_service(int(s))
         self.__persist_chats()
 
     def __services(self, update: Update, _: CallbackContext) -> None:
         services_text = ""
         for k, v in service_map.items():
-            services_text += f"{k} - {v}\n"
-        update.message.reply_text("Available services:\n" + services_text)
+            services_text += f"{k} \- {v}\n"
+        update.message.reply_text(
+            "available services:\n" + services_text, parse_mode=ParseMode.MARKDOWN_V2
+        )
 
     def __help(self, update: Update, _: CallbackContext) -> None:
         try:
             update.message.reply_text(
                 """
-/start - start the bot
-/stop - stop the bot
-/add_service <service_id> - add service to your list
-/remove_service <service_id> - remove service from your list
-/services - list of available services
-/my_services - list of services being polled for
-"""
+/start \- start the bot
+/stop \- stop the bot
+/add\_service \<service\_id\> \- add service to your list
+/remove\_service \<service\_id\> \- remove service from your list
+/services \- list of available services
+/my\_services \- list of services being polled for
+""",
+                parse_mode=ParseMode.MARKDOWN_V2,
             )
         except Exception as e:
             logging.error(e)
@@ -133,12 +138,19 @@ class Bot:
         self.__add_chat(update.message.chat_id)
         logging.info(f"got new user with id {update.message.chat_id}")
         update.message.reply_text(
-            "Welcome to BurgerBot. When there will be slot - you will receive notification. To get information about usage - type /help. To stop it - just type /stop"
+            """
+Welcome to BurgerBot
+For a list of commands \- type /help
+To stop \- type /stop
+        """,
+            parse_mode=ParseMode.MARKDOWN_V2,
         )
 
     def __stop(self, update: Update, _: CallbackContext) -> None:
         self.__remove_chat(update.message.chat_id)
-        update.message.reply_text("Thanks for using me! Bye!")
+        update.message.reply_text(
+            "thanks for using me", parse_mode=ParseMode.MARKDOWN_V2
+        )
 
     def __add_service(self, update: Update, _: CallbackContext) -> None:
         logging.info(f"adding service {update.message}")
@@ -150,10 +162,14 @@ class Bot:
                     self.parser.add_service(int(service_id))
                     self.__persist_chats()
                     break
-            update.message.reply_text(f"{service_map[int(service_id)]} added")
+            update.message.reply_text(
+                f"{service_map[int(service_id)]} added",
+                parse_mode=ParseMode.MARKDOWN_V2,
+            )
         except Exception as e:
             update.message.reply_text(
-                "Failed to add service, have you specified the service id?"
+                "Failed to add service, have you specified the service id?",
+                parse_mode=ParseMode.MARKDOWN_V2,
             )
             logging.error(e)
 
@@ -170,7 +186,9 @@ class Bot:
                 break
         if not self.__check_service_is_needed(service_id):
             self.parser.remove_service(int(service_id))
-        update.message.reply_text(f"{service_map[int(service_id)]} removed")
+        update.message.reply_text(
+            f"{service_map[int(service_id)]} removed", parse_mode=ParseMode.MARKDOWN_V2
+        )
 
     def __check_service_is_needed(self, service_id: int) -> bool:
         for u in self.users:
@@ -183,8 +201,11 @@ class Bot:
         for u in self.users:
             if u.chat_id == update.message.chat_id:
                 for s in u.services:
-                    services.append(f"{service_map[s]} - {s}")
-        update.message.reply_text(f'currently polling for: {", ".join(services)}')
+                    services.append(f"{s} \- {service_map[s]}")
+        update.message.reply_text(
+            f"currently polling for:\n{chr(10).join(services)}",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
 
     def __poll(self) -> None:
         self.updater.start_polling()
