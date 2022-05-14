@@ -68,6 +68,7 @@ class Bot:
         self.dispatcher.add_handler(CommandHandler("stop", self.__stop))
         self.dispatcher.add_handler(CommandHandler("add_service", self.__add_service))
         self.dispatcher.add_handler(CommandHandler("my_services", self.__my_services))
+        self.dispatcher.add_handler(CommandHandler("last_status", self.__last_status))
         self.dispatcher.add_handler(
             CommandHandler("remove_service", self.__remove_service)
         )
@@ -204,6 +205,19 @@ To stop \- type /stop
                     services.append(f"{s} \- {service_map[s]}")
         update.message.reply_text(
             f"currently polling for:\n{chr(10).join(services)}",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+
+    def __last_status(self, update: Update, _: CallbackContext) -> None:
+        status = []
+        for u in self.users:
+            for s in u.services:
+                st = self.parser.get_status(s)
+                status.append(
+                    f"{s} \- {datetime.fromtimestamp(st.time).strftime('%c')} \- {st.status}"
+                )
+        update.message.reply_text(
+            f"last statuses for your selected services:\n{chr(10).join(status)}",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
 

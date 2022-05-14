@@ -1,3 +1,4 @@
+import datetime
 import time
 import logging
 from dataclasses import dataclass
@@ -22,9 +23,16 @@ class Slot:
     service_id: int
 
 
+@dataclass
+class Poll:
+    time: float
+    status: str
+
+
 class Parser:
     def __init__(self, services: List[int]) -> None:
         self.services = services
+        self.last_poll: dict = {}
         self.proxy_on: bool = False
         self.parse()
 
@@ -55,10 +63,15 @@ class Parser:
             soup = BeautifulSoup(page.content, "html.parser")
             slots = soup.find_all("td", class_="buchbar")
             is_valid = soup.find_all("td", class_="nichtbuchbar")
-            if len(is_valid) > 0:
-                logging.info("page is valid")
-            if len(slots) == 0:
-                logging.info("no luck yet")
+            if len(is_valid) > 0 and len(slots) == 0:
+                self.last_poll[service_id] = Poll(
+                    time=time.time(), status="page is valid but no slots found"
+                )
+                logging.info("page is valid but no slots found")
+            if len(is_valid) > 0 and len(slots) > 0:
+                self.last_poll[service_id] = Poll(
+                    time=time.time(), status=f"slots found"
+                )
             return [Slot(slot.a["href"], service_id) for slot in slots]
         except Exception as e:  ## sometimes shit happens
             logging.warn(e)
@@ -73,12 +86,16 @@ class Parser:
         except ValueError:
             logging.info(f"{service_id} not in parser")
 
+    def get_status(self, service_id: int) -> Poll:
+        return self.last_poll[service_id]
+
     def parse(self) -> List[str]:
         slots = []
         logging.info("services are: " + str(self.services))
-        for svc in self.services:
-            page = self.__get_url(build_url(svc))
+        for s in self.services:
+            page = self.__get_url(build_url(s))
             if page == None:
+                self.last_poll[s] = Poll(time=time.time(), status=f"connection issue")
                 continue
-            slots += self.__parse_page(page, svc)
+            slots += self.__parse_page(page, s)
         return slots
