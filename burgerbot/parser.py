@@ -87,7 +87,10 @@ class Parser:
             logging.info(f"{service_id} not in parser")
 
     def get_status(self, service_id: int) -> Poll:
-        return self.last_poll[service_id]
+        try:
+            return self.last_poll[service_id]
+        except KeyError:
+            return Poll(time=time.time(), status="no last status")
 
     def parse(self) -> List[str]:
         slots = []
