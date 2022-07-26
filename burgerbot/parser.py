@@ -44,10 +44,10 @@ class Parser:
                 )
             return requests.get(url, timeout=10)
         except requests.exceptions.ConnectionError:
-            logging.warn("connection error")
+            logging.warn("Connection error")
             return None
         except requests.exceptions.ReadTimeout:
-            logging.warn("request timeout")
+            logging.warn("Request timeout")
             return None
 
     def __toggle_proxy(self) -> None:
@@ -55,9 +55,10 @@ class Parser:
 
     def __parse_page(self, page, service_id) -> List[str]:
         try:
+            logging.info(f"parse_page: status_code is {page.status_code}")
             if page.status_code == 428:
-                logging.info("exceeded rate limit. Sleeping for a while")
-                time.sleep(299)
+                logging.info("Exceeded rate limit. Sleeping for 300s")
+                time.sleep(300)
                 self.__toggle_proxy()
                 return None
             soup = BeautifulSoup(page.content, "html.parser")
@@ -65,12 +66,12 @@ class Parser:
             is_valid = soup.find_all("td", class_="nichtbuchbar")
             if len(is_valid) > 0 and len(slots) == 0:
                 self.last_poll[service_id] = Poll(
-                    time=time.time(), status="page is valid but no slots found"
+                    time=time.time(), status="Page is valid, but no slots found..."
                 )
-                logging.info("page is valid but no slots found")
+                logging.info("Page is valid, but no slots found...")
             if len(is_valid) > 0 and len(slots) > 0:
                 self.last_poll[service_id] = Poll(
-                    time=time.time(), status=f"slots found"
+                    time=time.time(), status=f"Slots found..."
                 )
             return [Slot(slot.a["href"], service_id) for slot in slots]
         except Exception as e:  ## sometimes shit happens
@@ -90,15 +91,15 @@ class Parser:
         try:
             return self.last_poll[service_id]
         except KeyError:
-            return Poll(time=time.time(), status="no last status")
+            return Poll(time=time.time(), status="No last status")
 
     def parse(self) -> List[str]:
         slots = []
-        logging.info("services are: " + str(self.services))
+        logging.info("Services are: " + str(self.services))
         for s in self.services:
             page = self.__get_url(build_url(s))
             if page == None:
-                self.last_poll[s] = Poll(time=time.time(), status=f"connection issue")
+                self.last_poll[s] = Poll(time=time.time(), status=f"Connection issue")
                 continue
             slots += self.__parse_page(page, s)
         return slots

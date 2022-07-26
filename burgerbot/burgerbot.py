@@ -16,20 +16,21 @@ from telegram.update import Update
 from parser import Parser, Slot, build_url
 
 
-CHATS_FILE = "chats.json"
-ua_url = "https://service.berlin.de/terminvereinbarung/termin/tag.php?termin=1&dienstleister=330857&anliegen[]=330869&herkunft=1"
-register_prefix = "https://service.berlin.de"
+CHATS_FILE = 'chats.json'
+ua_url = 'https://service.berlin.de/terminvereinbarung/termin/tag.php?termin=1&dienstleister=330857&anliegen[]=330869&herkunft=1'
+register_prefix = 'https://service.berlin.de'
 
 service_map = {
-    120686: "Anmeldung",
-    120680: "Beglaubigungen",
-    120701: "Personalausweis beantragen",
-    121151: "Reisepass beantragen",
-    121921: "Gewerbeanmeldung",
-    327537: "Fahrerlaubnis \- Umschreibung einer ausländischen",
-    324280: "Niederlassungserlaubnis oder Erlaubnis",
-    318998: "Einbürgerung \- Verleihung der deutschen Staatsangehörigkeit beantragen",
-    121591: "Führerschein \- Internationalen Führerschein beantragen",
+    120686: 'Anmeldung',
+    120680: 'Beglaubigungen',
+    120701: 'Personalausweis beantragen',
+    121151: 'Reisepass beantragen',
+    121921: 'Gewerbeanmeldung',
+    327537: 'Fahrerlaubnis \- Umschreibung einer ausländischen',
+    324280: 'Niederlassungserlaubnis oder Erlaubnis',
+    318998: 'Einbürgerung \- Verleihung der deutschen Staatsangehörigkeit beantragen',
+    121874: 'Aufenthaltserlaubnis auf einen neuen Pass übertragen',
+    120335: 'Abmeldung einer Wohnung',
 }
 
 
@@ -43,10 +44,11 @@ class Message:
 class User:
     chat_id: int
     services: List[int]
-
     def __init__(self, chat_id, services=[]):
-        self.chat_id = chat_id
-        self.services = services
+      self.chat_id = chat_id
+      #self.services = services if len(services) > 0 else [327537]
+      self.services = services
+
 
     def marshall_user(self) -> str:
         self.services = list(
@@ -104,7 +106,7 @@ class Bot:
             self.__persist_chats()
 
     def __remove_chat(self, chat_id: int) -> None:
-        logging.info("removing the chat " + str(chat_id))
+        logging.info("remove_chat: removing the chat " + str(chat_id))
         self.users = [u for u in self.users if u.chat_id != chat_id]
         for s in self.services:
             if not self.__check_service_is_needed(s):
@@ -112,14 +114,16 @@ class Bot:
         self.__persist_chats()
 
     def __services(self, update: Update, _: CallbackContext) -> None:
+        logging.info(f"services: user wants to know available services")
         services_text = ""
         for k, v in service_map.items():
             services_text += f"{k} \- {v}\n"
         update.message.reply_text(
-            "available services:\n" + services_text, parse_mode=ParseMode.MARKDOWN_V2
+            "Available services:\n" + services_text, parse_mode=ParseMode.MARKDOWN_V2
         )
 
     def __help(self, update: Update, _: CallbackContext) -> None:
+        logging.info(f"help: user wants help")
         try:
             update.message.reply_text(
                 """
@@ -138,7 +142,7 @@ class Bot:
 
     def __start(self, update: Update, _: CallbackContext) -> None:
         self.__add_chat(update.message.chat_id)
-        logging.info(f"got new user with id {update.message.chat_id}")
+        logging.info(f"Got new user with id {update.message.chat_id}")
         update.message.reply_text(
             """
 Welcome to BurgerBot
@@ -149,26 +153,38 @@ To stop \- type /stop
         )
 
     def __stop(self, update: Update, _: CallbackContext) -> None:
+        logging.info(f"stop: user wants to stop")
         self.__remove_chat(update.message.chat_id)
         update.message.reply_text(
-            "thanks for using me", parse_mode=ParseMode.MARKDOWN_V2
+            "Thanks for using me\!", parse_mode=ParseMode.MARKDOWN_V2
         )
 
     def __add_service(self, update: Update, _: CallbackContext) -> None:
-        logging.info(f"adding service {update.message}")
+        logging.info(f"add_service: user wants to add a service")
         try:
             service_id = int(update.message.text.split(" ")[1])
+            logging.info(f"add_service: service_id is {service_id}")
+            if not service_id in service_map:
+                logging.info(f"add_service: user tried to add an invalid service")
+                update.message.reply_text(
+                    f"Hmmmm: {service_id} is not a valid service\.\.\.", parse_mode=ParseMode.MARKDOWN_V2
+                )
+                return
             for u in self.users:
+                logging.info(f"add_service: user is {u}")
+                logging.info(f"add_service: u.services is currently {u.services}")
                 if u.chat_id == update.message.chat_id:
                     u.services.append(int(service_id))
                     self.parser.add_service(int(service_id))
                     self.__persist_chats()
+                    logging.info(f"add_service: u.services is now {u.services}")
                     break
             update.message.reply_text(
                 f"{service_map[int(service_id)]} added",
                 parse_mode=ParseMode.MARKDOWN_V2,
             )
         except Exception as e:
+            logging.info(f"add_service: user wants to add a service but didn\'t specify service_id")
             update.message.reply_text(
                 "Failed to add service, have you specified the service id?",
                 parse_mode=ParseMode.MARKDOWN_V2,
@@ -176,40 +192,71 @@ To stop \- type /stop
             logging.error(e)
 
     def __remove_service(self, update: Update, _: CallbackContext) -> None:
-        logging.info(f"removing service {update.message}")
-        service_id = int(update.message.text.split(" ")[1])
-        for u in self.users:
-            if u.chat_id == update.message.chat_id:
-                try:
-                    u.services.remove(int(service_id))
-                except ValueError:
-                    logging.info(f"{service_id} not in list")
-                self.__persist_chats()
-                break
-        if not self.__check_service_is_needed(service_id):
-            self.parser.remove_service(int(service_id))
-        update.message.reply_text(
-            f"{service_map[int(service_id)]} removed", parse_mode=ParseMode.MARKDOWN_V2
-        )
+        logging.info(f"remove_service: user wants to remove a service")
+        try:
+            service_id = int(update.message.text.split(" ")[1])
+            logging.info(f"remove_service: service_id is {service_id}")
+            if not service_id in service_map:
+                logging.info(f"remove_service: user tried to remove an invalid service")
+                update.message.reply_text(
+                    f"Hmmmm: {service_id} is not a valid service\.\.\.", parse_mode=ParseMode.MARKDOWN_V2
+                )
+                return
+            for u in self.users:
+                logging.info(f"remove_service: user is {u}")
+                logging.info(f"remove_service: u.services is currently {u.services}")
+                if u.chat_id == update.message.chat_id:
+                    if self.__check_service_is_needed(service_id):
+                        logging.info(f"remove_service: check_if_service_is_needed returned True")
+                        u.services.remove(int(service_id))
+                        self.parser.remove_service(int(service_id))
+                        self.__persist_chats()
+                        update.message.reply_text(
+                            f"Removed: {service_map[int(service_id)]}", parse_mode=ParseMode.MARKDOWN_V2
+                        )
+                        break
+                    else:
+                        logging.info(f"remove_service: check_if_service_is_needed returned False")
+                        update.message.reply_text(
+                            f"Nothing to remove: {service_map[int(service_id)]} is currently not being tracked\.", parse_mode=ParseMode.MARKDOWN_V2
+                        )
+        except Exception as e:
+            logging.info(f"remove_service: user wants to remove a service but didn\'t specify service_id")
+            update.message.reply_text(
+                "Failed to remove service, have you specified the service id?",
+                parse_mode=ParseMode.MARKDOWN_V2,
+            )
+            logging.error(e)
 
     def __check_service_is_needed(self, service_id: int) -> bool:
+        logging.info(f"check_if_service_is_needed: service_id is {service_id}")
         for u in self.users:
-            for s in u.services:
-                if s == service_id:
-                    return True
+            logging.info(f"check_if_service_is_needed: user is {u}")
+            logging.info(f"check_if_service_is_needed: u.services is {u.services}")
+            if service_id in u.services:
+                logging.info(f"check_if_service_is_needed: found service in user services list. Return True.")
+                return True
+            else:
+                logging.info(f"check_if_service_is_needed: did not find service in user services list. Return False.")
+                return False
+            break
 
     def __my_services(self, update: Update, _: CallbackContext) -> None:
+        logging.info(f"my_services: user wants to know its services")
         services: List[str] = []
         for u in self.users:
+            logging.info(f"my_services: user is {u}")
             if u.chat_id == update.message.chat_id:
                 for s in u.services:
                     services.append(f"{s} \- {service_map[s]}")
+                logging.info(f"my_services: user services list is {u.services}")
         update.message.reply_text(
-            f"currently polling for:\n{chr(10).join(services)}",
+            f"Currently polling for:\n{chr(10).join(services)}",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
 
     def __last_status(self, update: Update, _: CallbackContext) -> None:
+        logging.info(f"last_status: user wants to check last status")
         status = []
         for u in self.users:
             for s in u.services:
@@ -230,7 +277,8 @@ To stop \- type /stop
             slots = self.parser.parse()
             for slot in slots:
                 self.__send_message(slot)
-            time.sleep(30)
+            logging.info(f"parse: sleeping for 180s")
+            time.sleep(180)
 
     def __send_message(self, slot: Slot) -> None:
         if self.__msg_in_cache(slot.msg):
